@@ -20,7 +20,7 @@ if uploaded:
 
     with col1:
         st.subheader("Input Image")
-        st.image(img, use_column_width=True)
+        st.image(img, width=400)
 
     with col2:
         st.subheader("Recognized Expression")
