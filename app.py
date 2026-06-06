@@ -1,17 +1,16 @@
 import streamlit as st
-import google.generativeai as genai
+from pix2tex.cli import LatexOCR
 from PIL import Image
-import io
 
 st.set_page_config(page_title="MathInk2Text", page_icon="✏️")
 st.title("✏️ MathInk2Text")
-st.write("Upload a photo of a handwritten math expression to convert it to text.")
+st.write("Upload a photo of a handwritten math expression to get LaTeX output.")
 
-with st.sidebar:
-    st.header("Configuration")
-    api_key = st.text_input("Google Gemini API Key (free)", type="password",
-                             help="Get free key at aistudio.google.com")
-    st.markdown("[Get Free Key](https://aistudio.google.com)")
+@st.cache_resource(show_spinner="Loading model...")
+def load_model():
+    return LatexOCR()
+
+model = load_model()
 
 uploaded = st.file_uploader("Upload image", type=["png", "jpg", "jpeg"])
 
@@ -25,24 +24,7 @@ if uploaded:
 
     with col2:
         st.subheader("Recognized Expression")
-        if not api_key:
-            st.warning("Please enter your Gemini API key in the sidebar.")
-        else:
-            with st.spinner("Recognizing..."):
-                try:
-                    genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel("gemini-1.5-flash-8b")
-                    
-                    buffer = io.BytesIO()
-                    img.save(buffer, format="PNG")
-                    buffer.seek(0)
-                    
-                    response = model.generate_content([
-                        "This image contains a handwritten mathematical expression. Extract and return ONLY the math expression as plain text. Use standard symbols: + - * / for operators, ^ for powers. Return nothing else.",
-                        Image.open(buffer)
-                    ])
-                    text = response.text.strip()
-                    st.success(text)
-                    st.code(text)
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+        with st.spinner("Recognizing..."):
+            result = model(img)
+        st.success(result)
+        st.code(result)
