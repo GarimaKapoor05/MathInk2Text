@@ -22,7 +22,8 @@ def normalize(text):
     return text
 
 def preprocess(img):
-    img = img.convert('L')  # grayscale
+    img = img.convert('L')
+    img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)  # upscale
     img = ImageEnhance.Contrast(img).enhance(2.0)
     img = img.filter(ImageFilter.SHARPEN)
     return img
@@ -41,11 +42,18 @@ if uploaded:
         st.subheader("Recognized Expression")
         with st.spinner("Reading..."):
             processed = preprocess(img)
-            config = '--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789+-*/÷×()=. '
+            # No whitelist — let tesseract read freely
+            config = '--psm 6 --oem 3'
             text = pytesseract.image_to_string(processed, config=config).strip()
             text = normalize(text)
+
         if text:
             st.success(text)
             st.code(text)
         else:
             st.warning("Could not recognize expression. Try a clearer image.")
+
+        # Show debug — what raw tesseract sees
+        with st.expander("Debug: raw OCR output"):
+            raw = pytesseract.image_to_string(preprocess(img), config='--psm 6').strip()
+            st.text(raw)
