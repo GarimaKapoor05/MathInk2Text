@@ -1,12 +1,16 @@
 import streamlit as st
-import pytesseract
+import easyocr
 import numpy as np
 import re
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image
 
 st.set_page_config(page_title="MathInk2Text", page_icon="✏️")
 st.title("✏️ MathInk2Text")
 st.write("Upload a photo of a handwritten math expression to convert it to text.")
+
+@st.cache_resource(show_spinner="Loading OCR model...")
+def load_model():
+    return easyocr.Reader(['en'], gpu=False, download_enabled=True)
 
 def normalize(text):
     text = re.sub(r'\s*=.*$', '', text)
@@ -21,12 +25,7 @@ def normalize(text):
     text = re.sub(r'\s+\d$', '', text).strip()
     return text
 
-def preprocess(img):
-    img = img.convert('L')
-    img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)  # upscale
-    img = ImageEnhance.Contrast(img).enhance(2.0)
-    img = img.filter(ImageFilter.SHARPEN)
-    return img
+reader = load_model()
 
 uploaded = st.file_uploader("Upload image", type=["png", "jpg", "jpeg"])
 
@@ -40,20 +39,12 @@ if uploaded:
 
     with col2:
         st.subheader("Recognized Expression")
-        with st.spinner("Reading..."):
-            processed = preprocess(img)
-            # No whitelist — let tesseract read freely
-            config = '--psm 6 --oem 3'
-            text = pytesseract.image_to_string(processed, config=config).strip()
-            text = normalize(text)
+        with st.spinner("Recognizing..."):
+            result = reader.readtext(np.array(img), detail=0)
+            text = normalize(" ".join(result))
 
         if text:
             st.success(text)
             st.code(text)
         else:
-            st.warning("Could not recognize expression. Try a clearer image.")
-
-        # Show debug — what raw tesseract sees
-        with st.expander("Debug: raw OCR output"):
-            raw = pytesseract.image_to_string(preprocess(img), config='--psm 6').strip()
-            st.text(raw)
+            st.warning("Could not recognize. Try a clearer image.")
