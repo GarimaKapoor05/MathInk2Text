@@ -16,6 +16,14 @@ uploaded = st.file_uploader("Upload image", type=["png", "jpg", "jpeg"])
 
 if uploaded:
     img = Image.open(uploaded).convert("RGB")
+    
+    # Resize if too large
+    max_size = 1000
+    if max(img.size) > max_size:
+        ratio = max_size / max(img.size)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.LANCZOS)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -27,10 +35,8 @@ if uploaded:
         with st.spinner("Recognizing..."):
             result = model(img)
 
-        # Show rendered math
         st.subheader("Rendered Math:")
         st.latex(result)
 
-        # Show raw LaTeX
         st.subheader("LaTeX Code:")
         st.code(result, language="latex")
