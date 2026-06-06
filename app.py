@@ -1,31 +1,52 @@
 import streamlit as st
-import easyocr
-import numpy as np
+import anthropic
+import base64
 import re
 from PIL import Image
+import io
 
 st.set_page_config(page_title="MathInk2Text", page_icon="✏️")
 st.title("✏️ MathInk2Text")
 st.write("Upload a photo of a handwritten math expression to convert it to text.")
 
-@st.cache_resource(show_spinner="Loading OCR model...")
-def load_model():
-    return easyocr.Reader(['en'], gpu=False, download_enabled=True)
+def image_to_base64(img):
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
 
-def normalize(text):
-    text = re.sub(r'\s*=.*$', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    replacements = {
-        'X': '*', 'x': '*', ':': '÷',
-        'I': '1', 'l': '1', 'O': '0',
-        'z': '2', 'Z': '2', '~': '-',
-    }
-    for wrong, correct in replacements.items():
-        text = text.replace(wrong, correct)
-    text = re.sub(r'\s+\d$', '', text).strip()
-    return text
+def recognize_math(img, api_key):
+    client = anthropic.Anthropic(api_key=api_key)
+    img_b64 = image_to_base64(img)
+    
+    message = client.messages.create(
+        model="claude-opus-4-6",
+        max_tokens=500,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": img_b64
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": "This image contains a handwritten mathematical expression. Extract and return ONLY the mathematical expression as plain text. Use standard symbols: + - * / for operators, ^ for powers, sqrt() for square roots. Return nothing else — just the expression itself."
+                }
+            ]
+        }]
+    )
+    return message.content[0].text.strip()
 
-reader = load_model()
+# Sidebar for API key
+with st.sidebar:
+    st.header("Configuration")
+    api_key = st.text_input("Anthropic API Key", type="password", 
+                             help="Get your key at console.anthropic.com")
+    st.markdown("[Get API Key](https://console.anthropic.com)")
 
 uploaded = st.file_uploader("Upload image", type=["png", "jpg", "jpeg"])
 
@@ -39,12 +60,13 @@ if uploaded:
 
     with col2:
         st.subheader("Recognized Expression")
-        with st.spinner("Recognizing..."):
-            result = reader.readtext(np.array(img), detail=0)
-            text = normalize(" ".join(result))
-
-        if text:
-            st.success(text)
-            st.code(text)
+        if not api_key:
+            st.warning("Please enter your Anthropic API key in the sidebar.")
         else:
-            st.warning("Could not recognize. Try a clearer image.")
+            with st.spinner("Recognizing..."):
+                try:
+                    result = recognize_math(img, api_key)
+                    st.success(result)
+                    st.code(result)
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
