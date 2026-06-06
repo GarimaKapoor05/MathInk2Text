@@ -26,6 +26,11 @@ if uploaded:
         st.subheader("Recognized Expression")
         with st.spinner("Recognizing..."):
             result = model(img)
-        st.success(result)
-        st.code(result)
-        
+
+        # Show rendered math
+        st.subheader("Rendered Math:")
+        st.latex(result)
+
+        # Show raw LaTeX
+        st.subheader("LaTeX Code:")
+        st.code(result, language="latex")
