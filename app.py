@@ -28,3 +28,4 @@ if uploaded:
             result = model(img)
         st.success(result)
         st.code(result)
+        
