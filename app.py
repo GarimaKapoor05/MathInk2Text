@@ -1,84 +1,57 @@
 import streamlit as st
-from PIL import Image
-import requests
-import base64
-import io
-import json
+import pytesseract
+import numpy as np
+import re
+from PIL import Image, ImageFilter, ImageEnhance
 
-st.set_page_config(page_title="MathInk2Text", page_icon="✏️", layout="wide")
+st.set_page_config(page_title="MathInk2Text", page_icon="✏️")
 st.title("✏️ MathInk2Text")
-st.write("Upload handwritten math equations — get LaTeX output instantly.")
+st.write("Upload a photo of a handwritten math expression to convert it to text.")
 
-@st.cache_resource
-def get_credentials():
-    return st.secrets.get("MATHPIX_APP_ID", ""), st.secrets.get("MATHPIX_APP_KEY", "")
+def normalize(text):
+    text = re.sub(r'\s*=.*$', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    replacements = {
+        'X': '*', 'x': '*', ':': '÷',
+        'I': '1', 'l': '1', 'O': '0',
+        'z': '2', 'Z': '2', '~': '-',
+    }
+    for wrong, correct in replacements.items():
+        text = text.replace(wrong, correct)
+    text = re.sub(r'\s+\d$', '', text).strip()
+    return text
 
-def recognize_math(img, app_id, app_key):
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    img_b64 = base64.b64encode(buffer.getvalue()).decode()
-    
-    response = requests.post(
-        "https://api.mathpix.com/v3/text",
-        headers={
-            "app_id": app_id,
-            "app_key": app_key,
-            "Content-Type": "application/json"
-        },
-        json={
-            "src": f"data:image/png;base64,{img_b64}",
-            "formats": ["text", "latex_styled"],
-            "math_inline_delimiters": ["$", "$"],
-            "rm_spaces": True
-        }
-    )
-    return response.json()
-
-with st.sidebar:
-    st.header("Configuration")
-    app_id = st.text_input("Mathpix App ID", type="password")
-    app_key = st.text_input("Mathpix App Key", type="password")
-    st.markdown("[Get free credentials](https://mathpix.com)")
+def preprocess(img):
+    img = img.convert('L')
+    img = img.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+    img = ImageEnhance.Contrast(img).enhance(2.0)
+    img = img.filter(ImageFilter.SHARPEN)
+    return img
 
 uploaded = st.file_uploader("Upload image", type=["png", "jpg", "jpeg"])
 
 if uploaded:
     img = Image.open(uploaded).convert("RGB")
-    
-    # Resize if too large
-    max_size = 1500
-    if max(img.size) > max_size:
-        ratio = max_size / max(img.size)
-        img = img.resize((int(img.width * ratio), int(img.height * ratio)), Image.LANCZOS)
-
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Input Image")
-        rotation = st.slider("Rotate if needed", -30, 30, 0, 1)
-        if rotation != 0:
-            img = img.rotate(rotation, expand=True, fillcolor=(255, 255, 255))
-        st.image(img, use_container_width=True)
+        st.image(img, width=400)
 
     with col2:
-        st.subheader("Recognized Output")
-        if not app_id or not app_key:
-            st.warning("Enter your Mathpix credentials in the sidebar.")
+        st.subheader("Recognized Expression")
+        with st.spinner("Reading..."):
+            processed = preprocess(img)
+            config = '--psm 6 --oem 3'
+            text = pytesseract.image_to_string(processed, config=config).strip()
+            text = normalize(text)
+
+        if text:
+            st.success(text)
+            st.code(text)
         else:
-            with st.spinner("Recognizing..."):
-                try:
-                    result = recognize_math(img, app_id, app_key)
-                    
-                    if "latex_styled" in result:
-                        latex = result["latex_styled"]
-                        st.caption("Rendered math:")
-                        st.latex(latex)
-                        st.caption("LaTeX code:")
-                        st.code(latex, language="latex")
-                    
-                    if "text" in result:
-                        st.caption("Plain text:")
-                        st.code(result["text"])
-                        
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
+            st.warning("Could not recognize. Try a clearer image.")
+
+        with st.expander("Debug: raw OCR output"):
+            raw = pytesseract.image_to_string(preprocess(img), config='--psm 6').strip()
+            st.text(raw)
